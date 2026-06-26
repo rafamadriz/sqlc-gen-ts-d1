@@ -490,7 +490,7 @@ func (Naming) toEmbedColumnName(e *plugin.Identifier, c *plugin.Column) string {
 
 // toFunctionName returns the function name of the query function
 func (Naming) toFunctionName(q *plugin.Query) string {
-	return toLowerCamel(q.GetName())
+	return q.GetName()
 }
 
 var naming Naming
