@@ -14,7 +14,7 @@ import (
 	"github.com/orisano/sqlc-gen-ts-d1/codegen/plugin"
 )
 
-// handler は sqlc で解析したスキーマとクエリの情報を元に生成するコードの情報を返す
+// handler returns generated code information based on schema and query information parsed by sqlc
 func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 	options, err := parseOption(request.GetPluginOptions())
 	if err != nil {
@@ -32,7 +32,7 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 	tsTypeMap := buildTsTypeMap(request.GetSettings())
 	var files []*plugin.File
 	{
-		// sqlc.embed の際にスキーマの型が必要になるので models.ts として書き出す
+		// Schema types are needed for sqlc.embed, so output as models.ts
 		models := bytes.NewBuffer(nil)
 		appendMeta(models, request)
 		for _, s := range request.GetCatalog().GetSchemas() {
@@ -76,10 +76,10 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 
 		for _, q := range request.GetQueries() {
 			queryText := q.GetText()
-			// sqlc.embed はカラムを x.a, x.b, x.c のような形で展開する
-			// 複数の sqlc.embed が展開された結果、重複した名前のカラムの情報が得られない処理系がある
-			// そのため x.a AS x_a, x.b AS x_b, x.c AS x_c のようにクエリを書き換えることで問題を回避する
-			// カラムを一つずつ書き換えた場合は前方一致や後方一致を考慮する必要があるのでまとめて書き換えを行う
+			// sqlc.embed expands columns in the form x.a, x.b, x.c
+			// Some systems cannot obtain info about duplicate-named columns after expanding multiple sqlc.embed
+			// Therefore, avoid the problem by rewriting the query as x.a AS x_a, x.b AS x_b, x.c AS x_c
+			// When rewriting one column at a time, prefix/suffix matching must be considered, so rewrite all at once
 			for _, c := range q.GetColumns() {
 				et := c.GetEmbedTable()
 				if et.GetName() == "" {
@@ -100,16 +100,16 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 
 			querier.WriteByte('\n')
 
-			// パラメータが0個の場合は引数から削除するので型を生成しない
+			// Do not generate type when there are 0 parameters, as they will be removed from arguments
 			if len(q.GetParams()) > 0 {
 				fmt.Fprintf(querier, "export type %s = {\n", naming.toParamsTypeName(q))
 				for _, p := range q.GetParams() {
 					c := p.GetColumn()
 					paramName := naming.toPropertyName(c)
 					tsType := tsTypeMap.toTsType(c)
-					// パラメータは sqlc.narg を使った場合のみ nullable
+					// Parameters are nullable only when using sqlc.narg
 					if c.GetNotNull() {
-						// パラメータに対応するカラムがわかっていて、スキーマ上で nullable であればパラメータを nullable とする
+						// If the corresponding column is known and nullable in the schema, make the parameter nullable
 						if tc := tableMap.findColumn(c); tc != nil && !tc.GetNotNull() {
 							tsType += " | null"
 						}
@@ -122,27 +122,27 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 			}
 
 			needRawType := false
-			// :exec はレスポンスが返ってこないので型を生成しない
+			// :exec does not return a response, so do not generate a type
 			if q.GetCmd() != ":exec" {
 				fmt.Fprintf(querier, "export type %s = {\n", naming.toQueryRowTypeName(q))
 				for _, c := range q.GetColumns() {
 					colName := c.GetName()
 					propName := naming.toPropertyName(c)
 
-					// カラム名(snake)とプロパティ名(camel)が異なる場合
-					// 生成コードの内部で変換する必要があるのでクエリの内部結果型が必要になる
+				// When column name (snake) and property name (camel) differ
+				// An internal result type is needed because conversion is required within the generated code
 					if colName != propName {
 						needRawType = true
 					}
 
 					tsType := ""
 
-					// sqlc.embed が使われている場合
-					// 生成コードの内部で変換する必要があるのでクエリの内部結果型が必要になる
+				// When sqlc.embed is used
+				// An internal result type is needed because conversion is required within the generated code
 					if et := c.GetEmbedTable(); et.GetName() != "" {
 						needRawType = true
 						tsType = naming.toModelTypeName(et)
-						// models.ts から import が必要になる
+						// Import from models.ts is required
 						requireModels[tsType] = true
 					} else {
 						tsType = tsTypeMap.toTsType(c)
@@ -154,11 +154,11 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 				querier.WriteByte('\n')
 			}
 
-			// 內部結果型が必要な場合のみ生成する
+			// Generate only when internal result type is needed
 			if needRawType {
 				fmt.Fprintf(querier, "type %s = {\n", naming.toRawQueryRowTypeName(q))
 				for _, c := range q.GetColumns() {
-					// sqlc.embed の場合、スキーマからカラムの情報を取得し展開する
+					// In case of sqlc.embed, get column info from schema and expand
 					if et := c.GetEmbedTable(); et.GetName() != "" {
 						for _, ec := range tableMap.findTable(et).GetColumns() {
 							colName := naming.toEmbedColumnName(et, ec)
@@ -177,9 +177,9 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 			}
 
 			rowType := naming.toQueryRowTypeName(q)
-			// retType は関数の戻り値の型
+			// retType is the return type of the function
 			var retType string
-			// resultType は SQLite からの戻り値の型
+			// resultType is the return type from SQLite
 			var resultType string
 
 			if cmd := q.GetCmd(); cmd == ":one" {
@@ -200,7 +200,7 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 
 			fmt.Fprintf(querier, "export function %s(\n", naming.toFunctionName(q))
 			fmt.Fprintf(querier, "  d1: D1Database")
-			// パラメータがないときは引数を追加しない
+			// Do not add arguments when there are no parameters
 			if len(q.GetParams()) > 0 {
 				querier.WriteString(",\n")
 				fmt.Fprintf(querier, "  args: %s", naming.toParamsTypeName(q))
@@ -211,16 +211,16 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 			var queryVar string
 			var bindArgs string
 			if hasSqlcSlice(q) {
-				// SQLite はパラメータに配列を指定できないため、sqlc.slice では実行時にクエリを書き換える必要がある
-				// sqlc はパラメータに自動採番する都合で sqlc.slice のパラメータは登場順で番号がつく
-				// しかし ? には番号がついてない文字列が出力される (sqlc-dev/sqlc/pull/2274)
-				// 動的にパラメータの数が変動するが既存のパラメータの番号は書き換えたくないので1個目の要素はそのまま渡して動的なパラメータは末尾に追加する
-				// 例:
-				//  クエリ:
+				// SQLite cannot specify arrays as parameters, so sqlc.slice requires query rewriting at runtime
+				// sqlc auto-numbers parameters, so sqlc.slice parameters are numbered in order of appearance
+				// However, the ? outputs a string without a number (sqlc-dev/sqlc/pull/2274)
+				// The number of parameters changes dynamically, but existing parameter numbers should not be rewritten, so pass the first element as-is and append dynamic parameters to the end
+				// Example:
+				//  Query:
 				//    SELECT * FROM foo WHERE a = @a AND id IN (sqlc.slice(ids)) AND b = @b
-				//  コンパイル済み:
+				//  Compiled:
 				//    SELECT id, a, b FROM foo WHERE a = ?1 AND id IN (/*SLICE:ids*/?) AND b = ?3
-				//  実行時(idsが長さ3の場合):
+				//  Runtime (ids has length 3):
 				//    SELECT id, a, b FROM foo WHERE a = ?1 AND id IN (?2, ?4, ?5) AND b = ?3
 				fmt.Fprintf(querier, "  let query = %s;\n", naming.toConstQueryName(q))
 				fmt.Fprintf(querier, "  const params: any[] = [%s];\n", buildBindArgs(q))
@@ -231,10 +231,10 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 					}
 					n := p.GetNumber()
 					propName := naming.toPropertyName(c)
-					// sqlc.slice は (/*SLICE:foo*/?) という形式でクエリが書き出される (sqlc-dev/sqlc/pull/2274)
-					// (?1, ?2, ?3) のような形で書き換える
+					// sqlc.slice outputs the query in the format (/*SLICE:foo*/?) (sqlc-dev/sqlc/pull/2274)
+					// Rewrite in the form (?1, ?2, ?3)
 					fmt.Fprintf(querier, "  query = query.replace(\"(/*SLICE:%s*/?)\", expandedParam(%d, args.%s.length, params.length));\n", c.Name, n, propName)
-					// 1番目の要素は宣言時に params に含まれているのでそれ以降を push する
+					// The first element is included in params at declaration time, so push the rest
 					fmt.Fprintf(querier, "  params.push(...args.%s.slice(1));\n", propName)
 				}
 				queryVar = "query"
@@ -265,7 +265,7 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 				fmt.Fprintf(querier, "      ps.run()\n")
 			}
 
-			// 內部結果型を使っている場合は結果型に変換する処理を生成する
+			// When using internal result type, generate conversion to result type
 			if needRawType {
 				if q.GetCmd() == ":one" {
 					fmt.Fprintf(querier, "        .then((raw: %s) => raw ? {\n", resultType)
@@ -296,7 +296,7 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 		}
 
 		if requireExpandedParams {
-			// sqlc.slice は実行時にクエリ書き換えが必要でその際に使う関数
+			// Function used when sqlc.slice requires query rewriting at runtime
 			querier.WriteString(`function expandedParam(n: number, len: number, last: number): string {
   const params: number[] = [n];
   for (let i = 1; i < len; i++) {
@@ -326,7 +326,7 @@ func handler(request *plugin.CodeGenRequest) (*plugin.CodeGenResponse, error) {
 	}, nil
 }
 
-// TableMap はスキーマのテーブルの情報を検索可能なマップ
+// TableMap is a map that allows searching table information in the schema
 type TableMap struct {
 	m map[string]*tableMapEntry
 }
@@ -375,9 +375,9 @@ func buildTableMap(catalog *plugin.Catalog) TableMap {
 	return tm
 }
 
-// parseOption はクオートされたカンマ区切りの`key=value`形式かjsonのオブジェクト形式の入力を受け取りマップとして返す
-// 例: `"foo1=bar,foo2=buz"` => map[string]string{"foo1": "bar", "foo2": "buz"}
-// 例: `{"foo1":"bar","foo2":"buz"}` => map[string]string{"foo1": "bar", "foo2": "buz"}
+// parseOption takes a quoted comma-separated `key=value` format or JSON object format input and returns it as a map
+// Example: `"foo1=bar,foo2=buz"` => map[string]string{"foo1": "bar", "foo2": "buz"}
+// Example: `{"foo1":"bar","foo2":"buz"}` => map[string]string{"foo1": "bar", "foo2": "buz"}
 func parseOption(opt []byte) (map[string]string, error) {
 	m := map[string]string{}
 	if len(opt) == 0 {
@@ -452,43 +452,43 @@ func toLowerCamel(snake string) string {
 
 type Naming struct{}
 
-// toModelTypeName は models.ts に出力されるモデルの型名を返す
+// toModelTypeName returns the model type name output to models.ts
 func (Naming) toModelTypeName(table *plugin.Identifier) string {
 	return toUpperCamel(table.GetName())
 }
 
-// toPropertyName は TypeScript のプロパティの名前を返す
+// toPropertyName returns the TypeScript property name
 func (Naming) toPropertyName(col *plugin.Column) string {
 	return toLowerCamel(col.GetName())
 }
 
-// toConstQueryName はクエリ文字列の定数の名前を返す
+// toConstQueryName returns the constant name of the query string
 func (Naming) toConstQueryName(q *plugin.Query) string {
 	return toLowerCamel(q.GetName()) + "Query"
 }
 
-// toParamsTypeName はクエリのパラメータ型の名前を返す
+// toParamsTypeName returns the parameter type name of the query
 func (Naming) toParamsTypeName(q *plugin.Query) string {
 	return q.GetName() + "Params"
 }
 
-// toQueryRowTypeName はクエリの結果型の名前を返す
+// toQueryRowTypeName returns the result type name of the query
 func (Naming) toQueryRowTypeName(q *plugin.Query) string {
 	return q.GetName() + "Row"
 }
 
-// toRawQueryRowTypeName はクエリの内部結果型の名前を返す
+// toRawQueryRowTypeName returns the internal result type name of the query
 func (Naming) toRawQueryRowTypeName(q *plugin.Query) string {
 	return "Raw" + q.GetName() + "Row"
 }
 
-// toEmbedColumnName は sqlc.embed が使われたときのカラム名を返す
+// toEmbedColumnName returns the column name when sqlc.embed is used
 func (Naming) toEmbedColumnName(e *plugin.Identifier, c *plugin.Column) string {
-	// MEMO: "_" 1つだと最悪他のカラム名と衝突してしまいそう
+	// MEMO: A single "_" could potentially collide with other column names
 	return e.GetName() + "_" + c.GetName()
 }
 
-// toFunctionName はクエリ関数の関数名を返す
+// toFunctionName returns the function name of the query function
 func (Naming) toFunctionName(q *plugin.Query) string {
 	return toLowerCamel(q.GetName())
 }
@@ -521,7 +521,7 @@ func buildBindArgs(q *plugin.Query) string {
 func writeFromRawMapping(w *bytes.Buffer, indent string, tableMap TableMap, q *plugin.Query) {
 	for _, c := range q.GetColumns() {
 		propName := naming.toPropertyName(c)
-		// sqlc.embed の場合はモデル型に変換する
+		// In case of sqlc.embed, convert to model type
 		if et := c.GetEmbedTable(); et.GetName() != "" {
 			fmt.Fprintf(w, "%s// sqlc.embed(%s)\n", indent, propName)
 			fmt.Fprintf(w, "%s%s: {\n", indent, propName)

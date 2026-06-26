@@ -2,15 +2,17 @@
 
 https://github.com/voluntas/sqlc-gen-ts-d1-spec
 
-を元に作られたプロトタイプです。
+This is a prototype based on the original source above.
 
-## 使用方法
+## Instructions for use
 
-sqlc v1.19.0 以上で動作します。
+Works with sqlc v1.19.0 and above.
 
-sqlc.json の plugins 以下に ts-d1 を追加してください。
+Add `ts-d1` under the `plugins` section of your `sqlc.json/yaml` file.
 
-v0.0.0-a リリースは main branch に合わせて再生成されているので sha256 を再取得しないと期待通りの動作をしないかもしれません
+The v0.0.0-a release has been regenerated to match the main branch, so it may not work as
+expected unless you re-generate the SHA256 hash.
+
 ```bash
 cat <<EOS
 {
@@ -23,11 +25,12 @@ cat <<EOS
 EOS
 ```
 
-### オプション
-plugin のオプションにはカンマ区切りの `key=value` 形式文字列を渡すことができます。
+### Options
 
-* `workers-types-v3=1`: `@cloudflare/workers-types` の v3 のために import 文を出力しないようになります (デフォルトは0)
-* `workers-types=2022-11-30`: `@cloudflare/workers-types` の v4 の import する細かいバージョンを指定できます (デフォルトは2022-11-30)
+You can pass comma-separated `key=value` format strings as plugin options.
+
+* `workers-types-v3=1`: Prevents the output of import statements for v3 of `@cloudflare/workers-types` (default is 0)
+* `workers-types=2022-11-30`: Allows you to specify the exact version of `@cloudflare/workers-types` to import for v4 (default is 2022-11-30)
 
 ## License
 MIT
