@@ -459,7 +459,7 @@ func (Naming) toModelTypeName(table *plugin.Identifier) string {
 
 // toPropertyName returns the TypeScript property name
 func (Naming) toPropertyName(col *plugin.Column) string {
-	return toLowerCamel(col.GetName())
+	return col.GetName()
 }
 
 // toConstQueryName returns the constant name of the query string
